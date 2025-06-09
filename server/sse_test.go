@@ -16,7 +16,7 @@ import (
 func TestSSEServer(t *testing.T) {
 	t.Run("Can instantiate", func(t *testing.T) {
 		mcpServer := NewMCPServer("test", "1.0.0")
-		sseServer := NewSSEServer(mcpServer, "http://localhost:8080", "")
+		sseServer := NewSSEServer(mcpServer, "http://localhost:8080", "", "http://localhost:8080")
 
 		if sseServer == nil {
 			t.Error("SSEServer should not be nil")
@@ -234,7 +234,7 @@ func TestSSEServer(t *testing.T) {
 
 	t.Run("Can be used as http.Handler", func(t *testing.T) {
 		mcpServer := NewMCPServer("test", "1.0.0")
-		sseServer := NewSSEServer(mcpServer, "http://localhost:8080", "")
+		sseServer := NewSSEServer(mcpServer, "http://localhost:8080", "", "http://localhost:8080")
 
 		ts := httptest.NewServer(sseServer)
 		defer ts.Close()
@@ -287,7 +287,7 @@ func TestSSEServer(t *testing.T) {
 
 	t.Run("Works with middleware", func(t *testing.T) {
 		mcpServer := NewMCPServer("test", "1.0.0")
-		sseServer := NewSSEServer(mcpServer, "http://localhost:8080", "")
+		sseServer := NewSSEServer(mcpServer, "http://localhost:8080", "", "http://localhost:8080")
 
 		middleware := func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -336,7 +336,7 @@ func TestSSEServer(t *testing.T) {
 
 	t.Run("Works with custom mux", func(t *testing.T) {
 		mcpServer := NewMCPServer("test", "1.0.0")
-		sseServer := NewSSEServer(mcpServer, "", "")
+		sseServer := NewSSEServer(mcpServer, "", "", "")
 
 		mux := http.NewServeMux()
 		mux.Handle("/mcp/", http.StripPrefix("/mcp", sseServer))
@@ -404,5 +404,33 @@ func TestSSEServer(t *testing.T) {
 
 		// Clean up SSE connection
 		cancel()
+	})
+
+	t.Run("Handles OPTIONS with CORS", func(t *testing.T) {
+		mcpServer := NewMCPServer("test", "1.0.0")
+		sseServer := NewSSEServer(mcpServer, "http://localhost:8080", "", "http://localhost:8080")
+
+		ts := httptest.NewServer(sseServer)
+		defer ts.Close()
+
+		req, err := http.NewRequest("OPTIONS", fmt.Sprintf("%s/sse", ts.URL), nil)
+		if err != nil {
+			t.Fatalf("Failed to create request: %v", err)
+		}
+		req.Header.Set("Origin", "http://localhost:8080")
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("Failed to send request: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", resp.StatusCode)
+		}
+
+		if resp.Header.Get("Access-Control-Allow-Origin") != "http://localhost:8080" {
+			t.Errorf("Unexpected CORS origin: %s", resp.Header.Get("Access-Control-Allow-Origin"))
+		}
 	})
 }

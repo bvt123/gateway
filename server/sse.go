@@ -17,11 +17,12 @@ import (
 // SSEServer implements a Server-Sent Events (SSE) based MCP server.
 // It provides real-time communication capabilities over HTTP using the SSE protocol.
 type SSEServer struct {
-	server   *MCPServer
-	baseURL  string
-	sessions sync.Map
-	srv      *http.Server
-	prefix   string
+	server        *MCPServer
+	baseURL       string
+	sessions      sync.Map
+	srv           *http.Server
+	prefix        string
+	allowedOrigin []string
 }
 
 // sseSession represents an active SSE connection.
@@ -33,12 +34,30 @@ type sseSession struct {
 }
 
 // NewSSEServer creates a new SSE server instance with the given MCP server and base URL.
-func NewSSEServer(server *MCPServer, baseURL string, prefix string) *SSEServer {
+// Optional origins can be provided to restrict CORS headers.
+func NewSSEServer(server *MCPServer, baseURL string, prefix string, origins ...string) *SSEServer {
 	return &SSEServer{
-		server:  server,
-		baseURL: baseURL,
-		prefix:  prefix,
+		server:        server,
+		baseURL:       baseURL,
+		prefix:        prefix,
+		allowedOrigin: origins,
 	}
+}
+
+func (s *SSEServer) setCORSHeaders(w http.ResponseWriter, r *http.Request) {
+	origin := r.Header.Get("Origin")
+	if len(s.allowedOrigin) == 0 {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+	} else {
+		for _, o := range s.allowedOrigin {
+			if o == origin {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				break
+			}
+		}
+	}
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 }
 
 // NewTestServer creates a test server for testing purposes
@@ -88,10 +107,10 @@ func (s *SSEServer) handleSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.setCORSHeaders(w, r)
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	if s.server.NeedAuth(r) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -172,6 +191,8 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.setCORSHeaders(w, r)
+
 	sessionID := r.URL.Query().Get("sessionId")
 	if sessionID == "" {
 		s.writeJSONRPCError(w, nil, mcp.INVALID_PARAMS, "Missing sessionId")
@@ -228,6 +249,11 @@ func (s *SSEServer) handleMessage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *SSEServer) handleOptions(w http.ResponseWriter, r *http.Request) {
+	s.setCORSHeaders(w, r)
+	w.WriteHeader(http.StatusOK)
+}
+
 // writeJSONRPCError writes a JSON-RPC error response with the given error details.
 func (s *SSEServer) writeJSONRPCError(
 	w http.ResponseWriter,
@@ -273,8 +299,16 @@ func (s *SSEServer) SendEventToSession(
 func (s *SSEServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/" + path.Join(s.prefix, "sse"):
+		if r.Method == http.MethodOptions {
+			s.handleOptions(w, r)
+			return
+		}
 		s.handleSSE(w, r)
 	case "/" + path.Join(s.prefix, "message"):
+		if r.Method == http.MethodOptions {
+			s.handleOptions(w, r)
+			return
+		}
 		s.handleMessage(w, r)
 	default:
 		http.NotFound(w, r)

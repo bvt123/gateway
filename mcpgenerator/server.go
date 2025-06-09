@@ -48,8 +48,8 @@ func (s *MCPServer) SetConnector(connector connectors.Connector) error {
 	return nil
 }
 
-func (s *MCPServer) ServeSSE(addr string, prefix string) *server.SSEServer {
-	return server.NewSSEServer(s.server, addr, prefix)
+func (s *MCPServer) ServeSSE(addr string, prefix string, origins []string) *server.SSEServer {
+	return server.NewSSEServer(s.server, addr, prefix, origins...)
 }
 
 func (s *MCPServer) ServeStdio() *server.StdioServer {

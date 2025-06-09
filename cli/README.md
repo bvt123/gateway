@@ -160,7 +160,7 @@ gateway start [flags]
 
 - `--addr` - Address and port for the gateway server (e.g., ':9090', '127.0.0.1:8080') (default: ":9090")
 - `--config` - Path to YAML file with gateway configuration (default: "./gateway.yaml")
-- `--servers` - Comma-separated list of additional server URLs for Swagger UI (e.g., 'https://dev1.example.com,https://dev2.example.com')
+- `--servers` - Comma-separated list of server URLs used for Swagger UI and CORS for SSE (e.g., 'https://dev1.example.com,https://dev2.example.com')
 - `--connection-string` - Database connection string (DSN) for direct database connection
 - `--disable-swagger` - Disable Swagger UI documentation (default: "false")
 - `--mcp` - Start MCP SSE server (default: "true")
@@ -188,7 +188,7 @@ gateway start stdio [flags]
 - `--raw` - Enable raw protocol mode optimized for AI agents (default: "false")
 - `--addr` - Address and port for the gateway server (e.g., ':9090', '127.0.0.1:8080') (default: ":9090")
 - `--config` - Path to YAML file with gateway configuration (default: "./gateway.yaml")
-- `--servers` - Comma-separated list of additional server URLs for Swagger UI (e.g., 'https://dev1.example.com,https://dev2.example.com')
+- `--servers` - Comma-separated list of server URLs used for Swagger UI and CORS for SSE (e.g., 'https://dev1.example.com,https://dev2.example.com')
 
 
 
