@@ -76,5 +76,9 @@ func New(tag string, config any) (Connector, error) {
 	if !ok {
 		return nil, xerrors.Errorf("connector: %s not found", tag)
 	}
-	return f(config)
+	conn, err := f(config)
+	if err != nil {
+		return nil, err
+	}
+	return WrapWithLogging(conn), nil
 }
