@@ -34,13 +34,13 @@ var (
 )
 
 func init() {
-	// Configure logrus for nicer output
+	// Configure logrus for nicer output with timestamps
 	logrus.SetFormatter(&logrus.TextFormatter{
 		DisableLevelTruncation: true,
 		ForceColors:            true,
-		FullTimestamp:          false,
-		TimestampFormat:        "",
-		DisableTimestamp:       true,
+		FullTimestamp:          true,
+		TimestampFormat:        time.RFC3339,
+		DisableTimestamp:       false,
 	})
 }
 
