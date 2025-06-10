@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
 	"github.com/centralmind/gateway/cli"
@@ -33,6 +35,17 @@ func main() {
 		Short:        "gateway cli",
 		Example:      "./gateway help",
 		SilenceUsage: true,
+	}
+	var logLevel string
+	rootCommand.PersistentFlags().StringVar(&logLevel, "log-level", "info", "logging level (trace, debug, info, warn, error)")
+	rootCommand.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		level, err := logrus.ParseLevel(logLevel)
+		if err != nil {
+			return fmt.Errorf("invalid log level %s", logLevel)
+		}
+		logrus.SetOutput(os.Stdout)
+		logrus.SetLevel(level)
+		return nil
 	}
 	cli.RegisterCommand(rootCommand, cli.StartCommand())
 	cli.RegisterCommand(rootCommand, cli.Connectors())

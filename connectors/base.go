@@ -6,6 +6,7 @@ import (
 
 	"github.com/centralmind/gateway/model"
 	"github.com/jmoiron/sqlx"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/xerrors"
 )
 
@@ -27,15 +28,18 @@ func (b *BaseConnector) mapSQLTypeToColumnType(guesser TypeGuesser, sqlType stri
 // InferResultColumns provides a generic implementation for getting result column information
 // This implementation works with any SQL database that supports the database/sql interfaces
 func (b *BaseConnector) InferResultColumns(ctx context.Context, query string, guesser TypeGuesser) ([]model.ColumnSchema, error) {
+	logrus.Infof("Infer columns for query: %s", query)
 	// Prepare the statement to get column information
 	tx, err := b.DB.BeginTxx(ctx, &sql.TxOptions{
 		ReadOnly: true,
 	})
 	if err != nil {
+		logrus.Errorf("BeginTx failed with error: %v", err)
 		return nil, xerrors.Errorf("BeginTx failed with error: %w", err)
 	}
 	stmt, err := tx.PrepareNamedContext(ctx, query)
 	if err != nil {
+		logrus.Errorf("unable to prepare statement: %v", err)
 		return nil, xerrors.Errorf("unable to prepare statement: %w", err)
 	}
 	defer stmt.Close()
@@ -49,6 +53,7 @@ func (b *BaseConnector) InferResultColumns(ctx context.Context, query string, gu
 	// to only fetch metadata without actually executing the full query
 	rows, err := stmt.QueryContext(ctx, prms)
 	if err != nil {
+		logrus.Errorf("unable to execute statement: %v", err)
 		return nil, xerrors.Errorf("unable to execute statement: %w", err)
 	}
 	defer rows.Close()
@@ -56,6 +61,7 @@ func (b *BaseConnector) InferResultColumns(ctx context.Context, query string, gu
 	// Get column types from the result
 	colTypes, err := rows.ColumnTypes()
 	if err != nil {
+		logrus.Errorf("unable to get column types: %v", err)
 		return nil, xerrors.Errorf("unable to get column types: %w", err)
 	}
 
