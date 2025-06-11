@@ -30,11 +30,15 @@ Disovery better to call with a list of interested tables, since it will load all
 `, s.connector.Config().Type())),
 		mcp.WithString("tables_list"),
 	), s.discoverData)
+	prepareDesc := fmt.Sprintf(`Verify query and prepare output structure for query in %s database.
+This tool shall be executed before query, to examine output structure and verify that query is correct.
+`, s.connector.Config().Type())
+	if strings.EqualFold(s.connector.Config().Type(), "clickhouse") {
+		prepareDesc += "Should not be used for SELECT queries."
+	}
 	s.server.AddTool(mcp.NewTool(
 		"prepare_query",
-		mcp.WithDescription(fmt.Sprintf(`Verify query and prepare output structure for query in %s database.
-This tool shall be executed before query, to examine output structure and verify that query is correct.
-`, s.connector.Config().Type())),
+		mcp.WithDescription(prepareDesc),
 		mcp.WithString("query", mcp.Required()),
 	), s.prepareQuery)
 	s.server.AddTool(mcp.NewTool(
