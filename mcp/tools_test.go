@@ -142,3 +142,56 @@ func TestUnmarshalToolWithoutRawSchema(t *testing.T) {
 	assert.Empty(t, toolUnmarshalled.InputSchema.Required)
 	assert.Empty(t, toolUnmarshalled.RawInputSchema)
 }
+
+func TestGetSearchToolJSONOutput(t *testing.T) {
+	// Get the search tool definition
+	searchTool := GetSearchTool() // Assuming GetSearchTool() is in the same 'mcp' package
+
+	// Marshal the searchTool to JSON
+	actualJSONBytes, err := json.Marshal(searchTool)
+	assert.NoError(t, err, "Marshalling searchTool should not produce an error")
+
+	// Expected JSON structure for the single search tool object
+	// (Derived from the issue's specification, focusing on a single tool object)
+	expectedJSONString := `{
+		"name": "search",
+		"description": "Searches for resources using the provided query string and returns matching results.",
+		"inputSchema": {
+			"type": "object",
+			"properties": {
+				"query": {"type": "string", "description": "Search query."}
+			},
+			"required": ["query"]
+		},
+		"outputSchema": {
+			"type": "object",
+			"properties": {
+				"results": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"properties": {
+							"id": {"type": "string", "description": "ID of the resource."},
+							"title": {"type": "string", "description": "Title or headline of the resource."},
+							"text": {"type": "string", "description": "Text snippet or summary from the resource."},
+							"url": {"type": ["string", "null"], "description": "URL of the resource. Optional but needed for citations to work."}
+						},
+						"required": ["id", "title", "text"]
+					},
+                    "description": "A list of matching resources."
+				}
+			},
+			"required": ["results"]
+		}
+	}`
+
+	var actualMap map[string]interface{}
+	err = json.Unmarshal(actualJSONBytes, &actualMap)
+	assert.NoError(t, err, "Unmarshalling actual JSON should not produce an error")
+
+	var expectedMap map[string]interface{}
+	err = json.Unmarshal([]byte(expectedJSONString), &expectedMap)
+	assert.NoError(t, err, "Unmarshalling expected JSON should not produce an error")
+
+	assert.Equal(t, expectedMap, actualMap, "The marshalled search tool JSON should match the expected specification.")
+}

@@ -74,14 +74,22 @@ type Tool struct {
 	// A JSON Schema object defining the expected parameters for the tool.
 	InputSchema ToolInputSchema `json:"inputSchema"`
 	// Alternative to InputSchema - allows arbitrary JSON Schema to be provided
-	RawInputSchema json.RawMessage `json:"-"` // Hide this from JSON marshaling
+	OutputSchema   *ToolOutputSchema `json:"outputSchema,omitempty"` // Added this line
+	RawInputSchema json.RawMessage   `json:"-"`                      // Hide this from JSON marshaling
+}
+
+// ToolOutputSchema defines the schema for a tool's output parameters.
+type ToolOutputSchema struct {
+	Type       string                 `json:"type"`
+	Properties map[string]interface{} `json:"properties,omitempty"`
+	Required   []string               `json:"required,omitempty"`
 }
 
 // MarshalJSON implements the json.Marshaler interface for Tool.
 // It handles marshaling either InputSchema or RawInputSchema based on which is set.
 func (t Tool) MarshalJSON() ([]byte, error) {
 	// Create a map to build the JSON structure
-	m := make(map[string]interface{}, 3)
+	m := make(map[string]interface{}, 4)
 
 	// Add the name and description
 	m["name"] = t.Name
@@ -91,13 +99,17 @@ func (t Tool) MarshalJSON() ([]byte, error) {
 
 	// Determine which schema to use
 	if t.RawInputSchema != nil {
-		if t.InputSchema.Type != "" {
+		if t.InputSchema.Type != "" || (t.InputSchema.Properties != nil && len(t.InputSchema.Properties) > 0) {
 			return nil, fmt.Errorf("tool %s has both InputSchema and RawInputSchema set: %w", t.Name, errToolSchemaConflict)
 		}
 		m["inputSchema"] = t.RawInputSchema
 	} else {
 		// Use the structured InputSchema
 		m["inputSchema"] = t.InputSchema
+	}
+
+	if t.OutputSchema != nil {
+		m["outputSchema"] = t.OutputSchema
 	}
 
 	return json.Marshal(m)
@@ -132,6 +144,7 @@ func NewTool(name string, opts ...ToolOption) Tool {
 			Properties: make(map[string]interface{}),
 			Required:   nil, // Will be omitted from JSON if empty
 		},
+		OutputSchema: nil, // Initialize OutputSchema as nil
 	}
 
 	for _, opt := range opts {
@@ -158,11 +171,149 @@ func NewToolWithRawSchema(name, description string, schema json.RawMessage) Tool
 	return tool
 }
 
+// GetSearchTool defines and returns the search tool as per ChatGPT specification.
+func GetSearchTool() Tool {
+	searchTool := NewTool(
+		"search",
+		WithDescription("Searches for resources using the provided query string and returns matching results."),
+
+		// Input Schema definition
+		WithString("query", Description("Search query."), Required()), // Input property: query (string, required)
+
+		// Output Schema definition
+		WithOutputSchemaType("object"), // Explicitly set the top-level output schema type to "object"
+
+		WithOutputArrayProperty(
+			"results", // Name of the array property in the output schema
+			// Schema for the items within the "results" array
+			map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"id":    map[string]interface{}{"type": "string", "description": "ID of the resource."},
+					"title": map[string]interface{}{"type": "string", "description": "Title or headline of the resource."},
+					"text":  map[string]interface{}{"type": "string", "description": "Text snippet or summary from the resource."},
+					"url":   map[string]interface{}{"type": []string{"string", "null"}, "description": "URL of the resource. Optional but needed for citations to work."},
+				},
+				"required": []string{"id", "title", "text"}, // Properties required within each item object
+			},
+			// Options for the "results" property itself
+			Required(), // Marks the "results" array itself as a required property of the output schema
+			Description("A list of matching resources."), // Description for the "results" array property
+		),
+	)
+	// The Required() option passed to WithOutputArrayProperty should have added "results"
+	// to searchTool.OutputSchema.Required. If not, an explicit call to
+	// searchTool.OutputSchema.Required = appendIfMissing(searchTool.OutputSchema.Required, "results")
+	// might be needed, or a dedicated ToolOption like WithOutputRequiredFields("results").
+	// Based on the implementation of WithOutputArrayProperty, it should handle this.
+
+	return searchTool
+}
+
 // WithDescription adds a description to the Tool.
 // The description should provide a clear, human-readable explanation of what the tool does.
 func WithDescription(description string) ToolOption {
 	return func(t *Tool) {
 		t.Description = description
+	}
+}
+
+func WithOutputSchemaType(schemaType string) ToolOption {
+	return func(t *Tool) {
+		ensureOutputSchema(t)
+		t.OutputSchema.Type = schemaType
+	}
+}
+
+func WithOutputStringProperty(name string, opts ...PropertyOption) ToolOption {
+	return func(t *Tool) {
+		ensureOutputSchema(t)
+		if t.OutputSchema.Type == "" { // Ensure default type if not set
+			t.OutputSchema.Type = "object"
+		}
+		propertySchema := map[string]interface{}{"type": "string"}
+		isPropertyRequired := false
+
+		for _, opt := range opts {
+			// Create a temporary schema to check if 'required' is set by the option
+			tempSchemaForCheckingRequired := make(map[string]interface{})
+			opt(tempSchemaForCheckingRequired)
+
+			if req, ok := tempSchemaForCheckingRequired["required"].(bool); ok && req {
+				isPropertyRequired = true
+			} else {
+				opt(propertySchema) // Apply option if it's not 'Required'
+			}
+		}
+
+		if isPropertyRequired {
+			t.OutputSchema.Required = appendIfMissing(t.OutputSchema.Required, name)
+		}
+		t.OutputSchema.Properties[name] = propertySchema
+	}
+}
+
+func WithOutputArrayProperty(name string, itemsSchema map[string]interface{}, opts ...PropertyOption) ToolOption {
+	return func(t *Tool) {
+		ensureOutputSchema(t)
+		if t.OutputSchema.Type == "" {
+			t.OutputSchema.Type = "object"
+		}
+		propertySchema := map[string]interface{}{
+			"type":  "array",
+			"items": itemsSchema,
+		}
+		isPropertyRequired := false
+
+		for _, opt := range opts {
+			tempSchemaForCheckingRequired := make(map[string]interface{})
+			opt(tempSchemaForCheckingRequired)
+			if req, ok := tempSchemaForCheckingRequired["required"].(bool); ok && req {
+				isPropertyRequired = true
+			} else {
+				opt(propertySchema)
+			}
+		}
+
+		if isPropertyRequired {
+			t.OutputSchema.Required = appendIfMissing(t.OutputSchema.Required, name)
+		}
+		t.OutputSchema.Properties[name] = propertySchema
+	}
+}
+
+func WithOutputObjectProperty(name string, nestedProperties map[string]interface{}, nestedRequired []string, opts ...PropertyOption) ToolOption {
+	return func(t *Tool) {
+		ensureOutputSchema(t)
+		if t.OutputSchema.Type == "" {
+			t.OutputSchema.Type = "object"
+		}
+
+		objectSchemaInternal := map[string]interface{}{
+			"type":       "object",
+			"properties": nestedProperties,
+		}
+		if len(nestedRequired) > 0 {
+			objectSchemaInternal["required"] = nestedRequired
+		}
+
+		propertySchema := objectSchemaInternal
+
+		isPropertyRequired := false
+		for _, opt := range opts {
+			tempSchemaForCheckingRequired := make(map[string]interface{})
+			opt(tempSchemaForCheckingRequired)
+			if req, ok := tempSchemaForCheckingRequired["required"].(bool); ok && req {
+				isPropertyRequired = true
+			} else {
+				opt(propertySchema)
+			}
+		}
+
+		if isPropertyRequired {
+			t.OutputSchema.Required = appendIfMissing(t.OutputSchema.Required, name)
+		}
+		t.OutputSchema.Properties[name] = propertySchema
 	}
 }
 
@@ -289,6 +440,25 @@ func DefaultBool(value bool) PropertyOption {
 //
 // Property Type Helpers
 //
+
+func appendIfMissing(slice []string, s string) []string {
+	for _, ele := range slice {
+		if ele == s {
+			return slice
+		}
+	}
+	return append(slice, s)
+}
+
+func ensureOutputSchema(t *Tool) {
+	if t.OutputSchema == nil {
+		t.OutputSchema = &ToolOutputSchema{
+			Type:       "object", // Default type
+			Properties: make(map[string]interface{}),
+			Required:   nil,
+		}
+	}
+}
 
 // WithBoolean adds a boolean property to the tool schema.
 // It accepts property options to configure the boolean property's behavior and constraints.

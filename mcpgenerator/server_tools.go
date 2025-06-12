@@ -35,6 +35,28 @@ func (s *MCPServer) SetTools(tools []model.Endpoint) {
 			}
 		}
 
+		if endpoint.MCPMethod == "search" {
+			// Add OutputSchema options specifically for the 'search' tool
+			opts = append(opts, mcp.WithOutputSchemaType("object")) // Top-level output is an object
+			opts = append(opts, mcp.WithOutputArrayProperty(
+				"results", // Name of the array property
+				// Schema for the items within the "results" array
+				map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"id":    map[string]interface{}{"type": "string", "description": "ID of the resource."},
+						"title": map[string]interface{}{"type": "string", "description": "Title or headline of the resource."},
+						"text":  map[string]interface{}{"type": "string", "description": "Text snippet or summary from the resource."},
+						"url":   map[string]interface{}{"type": []string{"string", "null"}, "description": "URL of the resource. Optional but needed for citations to work."},
+					},
+					"required": []string{"id", "title", "text"}, // Properties required within each item object
+				},
+				// Options for the "results" property itself
+				mcp.Required(), // Marks the "results" array as a required property of the output schema
+				mcp.Description("A list of matching resources."), // Description for the "results" array property
+			))
+		}
+
 		s.server.AddTool(mcp.NewTool(
 			endpoint.MCPMethod,
 			opts...,
