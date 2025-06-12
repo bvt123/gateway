@@ -58,7 +58,7 @@ func TestToolWithRawSchema(t *testing.T) {
 	assert.Equal(t, "Search API", result["description"])
 
 	// Verify schema was properly included
-	schema, ok := result["inputSchema"].(map[string]interface{})
+	schema, ok := result["input_schema"].(map[string]interface{})
 	assert.True(t, ok)
 	assert.Equal(t, "object", schema["type"])
 

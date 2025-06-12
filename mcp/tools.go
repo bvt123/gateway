@@ -72,16 +72,20 @@ type Tool struct {
 	// A human-readable description of the tool.
 	Description string `json:"description,omitempty"`
 	// A JSON Schema object defining the expected parameters for the tool.
-	InputSchema ToolInputSchema `json:"inputSchema"`
+	InputSchema ToolInputSchema `json:"input_schema"`
+	// A JSON Schema object defining the expected output for the tool.
+	OutputSchema ToolOutputSchema `json:"output_schema"`
 	// Alternative to InputSchema - allows arbitrary JSON Schema to be provided
 	RawInputSchema json.RawMessage `json:"-"` // Hide this from JSON marshaling
+	// Alternative to OutputSchema - allows arbitrary JSON Schema to be provided
+	RawOutputSchema json.RawMessage `json:"-"` // Hide this from JSON marshaling
 }
 
 // MarshalJSON implements the json.Marshaler interface for Tool.
 // It handles marshaling either InputSchema or RawInputSchema based on which is set.
 func (t Tool) MarshalJSON() ([]byte, error) {
 	// Create a map to build the JSON structure
-	m := make(map[string]interface{}, 3)
+	m := make(map[string]interface{}, 4)
 
 	// Add the name and description
 	m["name"] = t.Name
@@ -89,21 +93,38 @@ func (t Tool) MarshalJSON() ([]byte, error) {
 		m["description"] = t.Description
 	}
 
-	// Determine which schema to use
+	// Determine which input schema to use
 	if t.RawInputSchema != nil {
 		if t.InputSchema.Type != "" {
 			return nil, fmt.Errorf("tool %s has both InputSchema and RawInputSchema set: %w", t.Name, errToolSchemaConflict)
 		}
-		m["inputSchema"] = t.RawInputSchema
+		m["input_schema"] = t.RawInputSchema
 	} else {
 		// Use the structured InputSchema
-		m["inputSchema"] = t.InputSchema
+		m["input_schema"] = t.InputSchema
+	}
+
+	// Determine which output schema to use
+	if t.RawOutputSchema != nil {
+		if t.OutputSchema.Type != "" {
+			return nil, fmt.Errorf("tool %s has both OutputSchema and RawOutputSchema set: %w", t.Name, errToolSchemaConflict)
+		}
+		m["output_schema"] = t.RawOutputSchema
+	} else {
+		// Use the structured OutputSchema
+		m["output_schema"] = t.OutputSchema
 	}
 
 	return json.Marshal(m)
 }
 
 type ToolInputSchema struct {
+	Type       string                 `json:"type"`
+	Properties map[string]interface{} `json:"properties,omitempty"`
+	Required   []string               `json:"required,omitempty"`
+}
+
+type ToolOutputSchema struct {
 	Type       string                 `json:"type"`
 	Properties map[string]interface{} `json:"properties,omitempty"`
 	Required   []string               `json:"required,omitempty"`
@@ -132,6 +153,11 @@ func NewTool(name string, opts ...ToolOption) Tool {
 			Properties: make(map[string]interface{}),
 			Required:   nil, // Will be omitted from JSON if empty
 		},
+		OutputSchema: ToolOutputSchema{
+			Type:       "object",
+			Properties: make(map[string]interface{}),
+			Required:   nil, // Will be omitted from JSON if empty
+		},
 	}
 
 	for _, opt := range opts {
@@ -153,6 +179,11 @@ func NewToolWithRawSchema(name, description string, schema json.RawMessage) Tool
 		Name:           name,
 		Description:    description,
 		RawInputSchema: schema,
+		OutputSchema: ToolOutputSchema{
+			Type:       "object",
+			Properties: make(map[string]interface{}),
+			Required:   nil,
+		},
 	}
 
 	return tool
@@ -365,5 +396,59 @@ func WithString(name string, opts ...PropertyOption) ToolOption {
 		}
 
 		t.InputSchema.Properties[name] = schema
+	}
+}
+
+
+// NewSearchTool creates a search tool that matches ChatGPT MCP specifications.
+// This is a convenience function for creating search tools with the expected schema.
+func NewSearchTool() Tool {
+	// Define the output schema that matches ChatGPT's specification
+	outputSchema := ToolOutputSchema{
+		Type: "object",
+		Properties: map[string]interface{}{
+			"results": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"id": map[string]interface{}{
+							"type":        "string",
+							"description": "ID of the resource.",
+						},
+						"title": map[string]interface{}{
+							"type":        "string", 
+							"description": "Title or headline of the resource.",
+						},
+						"text": map[string]interface{}{
+							"type":        "string",
+							"description": "Text snippet or summary from the resource.",
+						},
+						"url": map[string]interface{}{
+							"type":        []string{"string", "null"},
+							"description": "URL of the resource. Optional but needed for citations to work.",
+						},
+					},
+					"required": []string{"id", "title", "text"},
+				},
+			},
+		},
+		Required: []string{"results"},
+	}
+
+	return Tool{
+		Name:        "search",
+		Description: "Searches for resources using the provided query string and returns matching results.",
+		InputSchema: ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"query": map[string]interface{}{
+					"type":        "string",
+					"description": "Search query.",
+				},
+			},
+			Required: []string{"query"},
+		},
+		OutputSchema: outputSchema,
 	}
 }
