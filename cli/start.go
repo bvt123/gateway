@@ -156,7 +156,7 @@ Upon successful startup, the terminal will display URLs for both services.`,
 			for _, plug := range plugs {
 				plug.EnrichMCP(srv)
 			}
-			sse := srv.ServeSSE(serverAddresses[0], prefix)
+			sse := srv.ServeSSE(serverAddresses[0], prefix, serverAddresses)
 			mux.Handle(path.Join("/", prefix, "sse"), sse)
 			mux.Handle(path.Join("/", prefix, "message"), sse)
 			// Set up SSE (Server-Sent Events) endpoints for real-time event streaming
